@@ -28,16 +28,24 @@ pub fn build(b: *std.Build) void {
     };
 
     const options_step = b.addOptions();
-    inline for (std.meta.fields(@TypeOf(options))) |field| {
-        options_step.addOption(field.type, field.name, @field(options, field.name));
+    const info = @typeInfo(@TypeOf(options)).@"struct";
+    inline for (info.field_names, info.field_types) |name, T| {
+        options_step.addOption(T, name, @field(options, name));
     }
 
     const options_module = options_step.createModule();
+
+    const translate_c = b.addTranslateC(.{
+        .root_source_file = b.path("libs/glfw/include/GLFW/glfw3.h"),
+        .target = target,
+        .optimize = optimize,
+    });
 
     const module = b.addModule("root", .{
         .root_source_file = b.path("src/zglfw.zig"),
         .imports = &.{
             .{ .name = "zglfw_options", .module = options_module },
+            .{ .name = "c", .module = translate_c.createModule() },
         },
     });
 
@@ -195,6 +203,7 @@ pub fn build(b: *std.Build) void {
     addIncludePaths(b, tests.root_module, target, options);
     linkSystemLibs(b, tests, target, options);
     tests.root_module.addImport("zglfw_options", options_module);
+    tests.root_module.addImport("c", translate_c.createModule());
     tests.root_module.linkLibrary(glfw);
     b.installArtifact(tests);
     test_step.dependOn(&b.addRunArtifact(tests).step);
